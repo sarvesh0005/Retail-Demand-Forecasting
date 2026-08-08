@@ -8,7 +8,7 @@ def transform_data(calendar_df, prices_df, sales_df):
     """
 
     # -----------------------------
-    # Calendar
+    # Calendar Dimension
     # -----------------------------
     calendar_df = calendar_df.copy()
     calendar_df["date"] = pd.to_datetime(calendar_df["date"])
@@ -48,15 +48,11 @@ def transform_data(calendar_df, prices_df, sales_df):
     prices_df = prices_df.copy()
 
     # -----------------------------
-    # Sales Fact
+    # Sales Fact (Wide → Long)
     # -----------------------------
     id_columns = [
-        "id",
         "item_id",
-        "dept_id",
-        "cat_id",
         "store_id",
-        "state_id",
     ]
 
     day_columns = [
@@ -70,8 +66,18 @@ def transform_data(calendar_df, prices_df, sales_df):
         id_vars=id_columns,
         value_vars=day_columns,
         var_name="d",
-        value_name="sales",
+        value_name="sales_quantity",
     )
+
+    # Keep only columns present in database schema
+    sales_long = sales_long[
+        [
+            "item_id",
+            "store_id",
+            "d",
+            "sales_quantity",
+        ]
+    ]
 
     return (
         calendar_df,
