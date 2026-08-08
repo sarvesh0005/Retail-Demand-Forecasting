@@ -3,19 +3,54 @@ import pandas as pd
 
 def transform_data(calendar_df, prices_df, sales_df):
     """
-    Transform raw M5 data into a model-ready transactional dataset.
+    Transform raw M5 data into normalized tables
+    ready to be loaded into PostgreSQL.
     """
 
     # -----------------------------
-    # Convert data types
+    # Calendar
     # -----------------------------
     calendar_df = calendar_df.copy()
     calendar_df["date"] = pd.to_datetime(calendar_df["date"])
 
     # -----------------------------
-    # Convert Sales: Wide -> Long
+    # Products Dimension
     # -----------------------------
-    id_cols = [
+    products_df = (
+        sales_df[
+            [
+                "item_id",
+                "dept_id",
+                "cat_id",
+            ]
+        ]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+
+    # -----------------------------
+    # Stores Dimension
+    # -----------------------------
+    stores_df = (
+        sales_df[
+            [
+                "store_id",
+                "state_id",
+            ]
+        ]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+
+    # -----------------------------
+    # Prices Fact
+    # -----------------------------
+    prices_df = prices_df.copy()
+
+    # -----------------------------
+    # Sales Fact
+    # -----------------------------
+    id_columns = [
         "id",
         "item_id",
         "dept_id",
@@ -24,41 +59,27 @@ def transform_data(calendar_df, prices_df, sales_df):
         "state_id",
     ]
 
-    day_cols = [col for col in sales_df.columns if col.startswith("d_")]
+    day_columns = [
+        col
+        for col in sales_df.columns
+        if col.startswith("d_")
+    ]
 
     sales_long = pd.melt(
         sales_df,
-        id_vars=id_cols,
-        value_vars=day_cols,
+        id_vars=id_columns,
+        value_vars=day_columns,
         var_name="d",
         value_name="sales",
     )
 
-    # -----------------------------
-    # Merge Calendar
-    # -----------------------------
-    sales_calendar = sales_long.merge(
+    return (
         calendar_df,
-        on="d",
-        how="left",
-    )
-
-    # -----------------------------
-    # Merge Sell Prices
-    # -----------------------------
-    sales_full = sales_calendar.merge(
+        products_df,
+        stores_df,
         prices_df,
-        on=["store_id", "item_id", "wm_yr_wk"],
-        how="left",
+        sales_long,
     )
-
-    # -----------------------------
-    # Basic validation
-    # -----------------------------
-    assert sales_long.shape[0] == sales_calendar.shape[0]
-    assert sales_calendar.shape[0] == sales_full.shape[0]
-
-    return sales_full
 
 
 if __name__ == "__main__":
@@ -67,12 +88,22 @@ if __name__ == "__main__":
 
     calendar_df, prices_df, sales_df = extract_data()
 
-    sales_full = transform_data(
+    (
+        calendar_df,
+        products_df,
+        stores_df,
+        prices_df,
+        sales_long,
+    ) = transform_data(
         calendar_df,
         prices_df,
         sales_df,
     )
 
     print("Transformation Successful\n")
-    print(f"Final Shape : {sales_full.shape}")
-    print(sales_full.head())
+
+    print(f"Calendar : {calendar_df.shape}")
+    print(f"Products : {products_df.shape}")
+    print(f"Stores   : {stores_df.shape}")
+    print(f"Prices   : {prices_df.shape}")
+    print(f"Sales    : {sales_long.shape}")
