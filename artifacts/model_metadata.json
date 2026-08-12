@@ -1,0 +1,125 @@
+{
+  "model_name": "XGBoost baseline",
+  "model_type": "xgboost.XGBRegressor",
+  "target_column": "sales_quantity",
+  "feature_columns": [
+    "wm_yr_wk",
+    "weekday",
+    "wday",
+    "month",
+    "year",
+    "event_name_1",
+    "event_type_1",
+    "event_name_2",
+    "event_type_2",
+    "snap_CA",
+    "snap_TX",
+    "snap_WI",
+    "sell_price",
+    "dept_id",
+    "cat_id",
+    "state_id",
+    "day_of_week",
+    "day_of_month",
+    "week_of_year",
+    "quarter",
+    "is_event",
+    "price_lag_1",
+    "price_change",
+    "price_change_pct",
+    "relative_price",
+    "sales_lag_1",
+    "sales_lag_7",
+    "sales_lag_28",
+    "rolling_mean_7",
+    "rolling_mean_28",
+    "rolling_std_7",
+    "rolling_std_28"
+  ],
+  "categorical_columns": [
+    "weekday",
+    "event_name_1",
+    "event_type_1",
+    "event_name_2",
+    "event_type_2",
+    "dept_id",
+    "cat_id",
+    "state_id"
+  ],
+  "numerical_columns": [
+    "wm_yr_wk",
+    "wday",
+    "month",
+    "year",
+    "snap_CA",
+    "snap_TX",
+    "snap_WI",
+    "sell_price",
+    "day_of_week",
+    "day_of_month",
+    "week_of_year",
+    "quarter",
+    "is_event",
+    "price_lag_1",
+    "price_change",
+    "price_change_pct",
+    "relative_price",
+    "sales_lag_1",
+    "sales_lag_7",
+    "sales_lag_28",
+    "rolling_mean_7",
+    "rolling_mean_28",
+    "rolling_std_7",
+    "rolling_std_28"
+  ],
+  "transformed_feature_count": 79,
+  "model_params": {
+    "objective": "reg:squarederror",
+    "enable_categorical": true,
+    "learning_rate": 0.1,
+    "max_depth": 6,
+    "missing": NaN,
+    "n_estimators": 200,
+    "n_jobs": -1,
+    "random_state": 42
+  },
+  "validation_metrics": {
+    "mae": 0.8994247913360596,
+    "rmse": 1.6838031116426486,
+    "wape": 0.7565975347246039
+  },
+  "test_metrics": {
+    "mae": 0.9357109069824219,
+    "rmse": 1.7648770258697548,
+    "wape": 0.805086729176664
+  },
+  "naive_baseline_validation_metrics": {
+    "mae": 1.1399030303030302,
+    "rmse": 2.3408545448190496,
+    "n_excluded": 0,
+    "n_evaluated": 165000
+  },
+  "naive_baseline_test_metrics": {
+    "mae": 1.1937515151515152,
+    "rmse": 2.4971632390423024,
+    "n_excluded": 0,
+    "n_evaluated": 165000
+  },
+  "train_date_range": {
+    "start": "2013-01-01",
+    "end": "2014-05-25"
+  },
+  "validation_date_range": {
+    "start": "2014-05-26",
+    "end": "2014-09-12"
+  },
+  "test_date_range": {
+    "start": "2014-09-13",
+    "end": "2014-12-31"
+  },
+  "dataset_sizes": {
+    "train_rows": 765000,
+    "validation_rows": 165000,
+    "test_rows": 165000
+  }
+}
