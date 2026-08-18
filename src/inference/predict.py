@@ -1,8 +1,17 @@
 """
 Inference utilities for retail demand forecasting.
 
-Loads the persisted preprocessing pipeline and XGBoost model,
-then generates predictions for new feature-engineered data.
+Inference flow:
+
+Analytical data
+    ↓
+Feature engineering
+    ↓
+Saved preprocessor
+    ↓
+Saved XGBoost model
+    ↓
+Demand prediction
 """
 
 from __future__ import annotations
@@ -12,6 +21,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
+from src.features.build_features import build_features
 from src.preprocessing.preprocessor import prepare_features
 from src.models.train import predict
 
@@ -43,47 +53,96 @@ def load_artifacts():
 
     if not PREPROCESSOR_FILE.exists():
         raise FileNotFoundError(
-            f"Preprocessor artifact not found: {PREPROCESSOR_FILE}"
+            f"Preprocessor artifact not found: "
+            f"{PREPROCESSOR_FILE}"
         )
 
     model = joblib.load(MODEL_FILE)
-    preprocessor = joblib.load(PREPROCESSOR_FILE)
+    preprocessor = joblib.load(
+        PREPROCESSOR_FILE
+    )
 
     return model, preprocessor
 
 
 def predict_demand(
-    df: pd.DataFrame,
+    analytical_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Generate demand predictions for feature-engineered data.
+    Generate demand predictions from analytical data.
+
+    The input must contain sufficient historical data for
+    lag and rolling features to be calculated correctly.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Feature-engineered observations.
+    analytical_df : pd.DataFrame
+        Analytical dataset before feature engineering.
 
     Returns
     -------
     pd.DataFrame
-        Original identifier columns with predictions.
+        Identifier columns and predicted demand.
     """
+
+    if analytical_df.empty:
+        raise ValueError(
+            "Input dataframe is empty."
+        )
+
+    # --------------------------------------------------------------
+    # 1. Feature engineering
+    # --------------------------------------------------------------
+
+    feature_df = build_features(
+        analytical_df.copy()
+    )
+
+    # --------------------------------------------------------------
+    # 2. Load trained artifacts
+    # --------------------------------------------------------------
 
     model, preprocessor = load_artifacts()
 
-    X, _ = prepare_features(df)
+    # --------------------------------------------------------------
+    # 3. Prepare model features
+    # --------------------------------------------------------------
 
-    X_processed = preprocessor.transform(X)
+    X, _ = prepare_features(
+        feature_df
+    )
+
+    # --------------------------------------------------------------
+    # 4. Apply fitted preprocessing
+    # --------------------------------------------------------------
+
+    X_processed = preprocessor.transform(
+        X
+    )
+
+    # --------------------------------------------------------------
+    # 5. Generate predictions
+    # --------------------------------------------------------------
 
     predictions = predict(
         model,
-        X_processed,
+        X_processed
     )
 
-    result = df[
-        ["item_id", "store_id", "date"]
+    # --------------------------------------------------------------
+    # 6. Return predictions
+    # --------------------------------------------------------------
+
+    result = feature_df[
+        [
+            "item_id",
+            "store_id",
+            "date",
+        ]
     ].copy()
 
-    result["predicted_sales_quantity"] = predictions
+    result[
+        "predicted_sales_quantity"
+    ] = predictions
 
     return result

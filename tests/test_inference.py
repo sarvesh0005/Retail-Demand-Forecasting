@@ -1,10 +1,15 @@
 """
-Inference sanity test.
+End-to-end inference sanity test.
 
-Verifies that:
-1. Saved model and preprocessor can be loaded.
-2. Feature-engineered test data can be transformed.
-3. Predictions can be generated successfully.
+Analytical data
+    ↓
+Feature engineering
+    ↓
+Preprocessing
+    ↓
+XGBoost
+    ↓
+Prediction
 """
 
 from pathlib import Path
@@ -16,38 +21,69 @@ from src.inference.predict import predict_demand
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-TEST_FILE = (
+INPUT_FILE = (
     PROJECT_ROOT
     / "data"
     / "processed"
-    / "features"
-    / "test.parquet"
+    / "training_dataset"
+    / "train_dataset.parquet"
 )
 
 
 def main():
 
     print("=" * 60)
-    print("INFERENCE SANITY TEST")
+    print("END-TO-END INFERENCE TEST")
     print("=" * 60)
 
-    # Load a small sample only.
-    test_df = pd.read_parquet(
-        TEST_FILE
-    ).head(10)
-
-    print(f"\nInput rows: {len(test_df)}")
-
-    # Generate predictions using saved artifacts.
-    predictions = predict_demand(
-        test_df
+    # Load analytical data.
+    df = pd.read_parquet(
+        INPUT_FILE
     )
 
-    print("\nPredictions:")
-    print(predictions)
+    # Use a complete historical period rather than
+    # randomly selecting rows, because lag/rolling
+    # features require temporal history.
+    df = df.sort_values(
+        ["item_id", "store_id", "date"]
+    )
 
-    # Basic validation.
-    assert len(predictions) == len(test_df)
+    # Keep the first 60 days.
+    selected_dates = sorted(
+        df["date"].unique()
+    )[:60]
+
+    sample = df[
+        df["date"].isin(selected_dates)
+    ].copy()
+
+    print(
+        f"\nInput rows: {len(sample):,}"
+    )
+
+    # --------------------------------------------------------------
+    # Run complete inference pipeline
+    # --------------------------------------------------------------
+
+    predictions = predict_demand(
+        sample
+    )
+
+    print(
+        f"Prediction rows: "
+        f"{len(predictions):,}"
+    )
+
+    print("\nSample predictions:")
+    print(
+        predictions.head(10)
+    )
+
+    # --------------------------------------------------------------
+    # Basic validation
+    # --------------------------------------------------------------
+
+    assert len(predictions) == len(sample)
 
     assert (
         "predicted_sales_quantity"
@@ -55,12 +91,16 @@ def main():
     )
 
     assert (
-        predictions["predicted_sales_quantity"]
+        predictions[
+            "predicted_sales_quantity"
+        ]
         .notna()
         .all()
     )
 
-    print("\nInference sanity test passed.")
+    print(
+        "\nEnd-to-end inference test passed."
+    )
 
 
 if __name__ == "__main__":

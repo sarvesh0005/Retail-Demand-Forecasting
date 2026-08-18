@@ -1,8 +1,8 @@
 """
 Feature-engineering parity test.
 
-Compares the reusable build_features() implementation
-against the already validated feature-engineered dataset.
+Generates features from the pre-feature-engineering analytical
+dataset and compares them against the validated feature dataset.
 """
 
 from pathlib import Path
@@ -18,7 +18,15 @@ from src.features.build_features import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-REFERENCE_FILE = (
+RAW_ANALYTICAL_FILE = (
+    PROJECT_ROOT
+    / "data"
+    / "processed"
+    / "training_dataset"
+    / "train_dataset.parquet"
+)
+
+REFERENCE_FEATURE_FILE = (
     PROJECT_ROOT
     / "data"
     / "processed"
@@ -33,53 +41,204 @@ def main():
     print("FEATURE ENGINEERING PARITY TEST")
     print("=" * 60)
 
-    # Small deterministic sample for a fast comparison.
-    reference_df = pd.read_parquet(
-        REFERENCE_FILE
-    ).head(1000).copy()
+    # --------------------------------------------------------------
+    # 1. Load datasets
+    # --------------------------------------------------------------
 
-    print(f"\nReference shape: {reference_df.shape}")
-
-    # Generate features using our reusable module.
-    generated_df = build_features(
-        reference_df.copy()
+    raw_df = pd.read_parquet(
+        RAW_ANALYTICAL_FILE
     )
+
+    reference_df = pd.read_parquet(
+        REFERENCE_FEATURE_FILE
+    )
+
+    # Normalize date representation.
+    # Raw analytical data stores date as object/string,
+    # while Parquet feature data stores it as datetime64.
+    raw_df["date"] = pd.to_datetime(
+        raw_df["date"]
+    )
+
+    reference_df["date"] = pd.to_datetime(
+        reference_df["date"]
+    )
+
+    print(
+        f"\nAnalytical dataset : "
+        f"{raw_df.shape}"
+    )
+
+    print(
+        f"Reference features : "
+        f"{reference_df.shape}"
+    )
+
+    # --------------------------------------------------------------
+    # 2. Select dates that exist in the reference dataset
+    # --------------------------------------------------------------
+
+    reference_dates = sorted(
+        reference_df["date"].unique()
+    )
+
+    selected_dates = reference_dates[:15]
+
+    raw_sample = raw_df[
+        raw_df["date"].isin(selected_dates)
+    ].copy()
+
+    reference_sample = reference_df[
+        reference_df["date"].isin(selected_dates)
+    ].copy()
+
+    print(
+        f"\nSelected dates     : "
+        f"{selected_dates[0]} → "
+        f"{selected_dates[-1]}"
+    )
+
+    print(
+        f"Analytical sample  : "
+        f"{len(raw_sample):,} rows"
+    )
+
+    print(
+        f"Reference sample   : "
+        f"{len(reference_sample):,} rows"
+    )
+
+    # --------------------------------------------------------------
+    # 3. Basic sanity check
+    # --------------------------------------------------------------
+
+    if raw_sample.empty:
+        raise AssertionError(
+            "Analytical sample is empty."
+        )
+
+    if reference_sample.empty:
+        raise AssertionError(
+            "Reference feature sample is empty."
+        )
+
+    # --------------------------------------------------------------
+    # 4. Generate features
+    # --------------------------------------------------------------
+
+    print("\nGenerating features...")
+
+    generated_df = build_features(
+        raw_sample
+    )
+
+    print(
+        f"Generated features : "
+        f"{generated_df.shape}"
+    )
+
+    # --------------------------------------------------------------
+    # 5. Align row ordering
+    # --------------------------------------------------------------
+
+    key_columns = [
+        "item_id",
+        "store_id",
+        "date",
+    ]
+
+    generated_df = (
+        generated_df
+        .sort_values(key_columns)
+        .reset_index(drop=True)
+    )
+
+    reference_sample = (
+        reference_sample
+        .sort_values(key_columns)
+        .reset_index(drop=True)
+    )
+
+    # --------------------------------------------------------------
+    # 6. Check row counts
+    # --------------------------------------------------------------
+
+    if len(generated_df) != len(reference_sample):
+
+        raise AssertionError(
+            "Row count mismatch: "
+            f"{len(generated_df)} generated vs "
+            f"{len(reference_sample)} reference."
+        )
+
+    # --------------------------------------------------------------
+# 7. Check identifier alignment
+# --------------------------------------------------------------
+
+# Compare identifier values after normalizing their
+# representation. This avoids false failures caused by
+# different datetime resolutions such as datetime64[ns]
+# versus datetime64[ms].
+
+    for column in key_columns:
+
+        generated_values = (
+            generated_df[column]
+            .astype("string")
+            .reset_index(drop=True)
+        )
+
+        reference_values = (
+            reference_sample[column]
+            .astype("string")
+            .reset_index(drop=True)
+        )
+
+        if not generated_values.equals(
+            reference_values
+        ):
+
+            raise AssertionError(
+                f"Identifier ordering mismatch "
+                f"in column: {column}"
+            )
+
+    # --------------------------------------------------------------
+    # 8. Compare model features
+    # --------------------------------------------------------------
 
     feature_columns = get_feature_columns()
 
-    # --------------------------------------------------------------
-    # 1. Check required columns
-    # --------------------------------------------------------------
-
-    missing = [
-        col
-        for col in feature_columns
-        if col not in generated_df.columns
-    ]
-
-    assert not missing, (
-        f"Generated features are missing: {missing}"
+    print(
+        f"\nComparing "
+        f"{len(feature_columns)} model features..."
     )
-
-    # --------------------------------------------------------------
-    # 2. Compare feature values
-    # --------------------------------------------------------------
 
     mismatches = []
 
     for column in feature_columns:
 
-        reference = reference_df[column]
         generated = generated_df[column]
+        reference = reference_sample[column]
 
-        # Numeric comparison allows small floating-point differences.
-        if pd.api.types.is_numeric_dtype(reference):
+        # ----------------------------------------------------------
+        # Numeric features
+        # ----------------------------------------------------------
+
+        if (
+            pd.api.types.is_numeric_dtype(
+                generated
+            )
+            and pd.api.types.is_numeric_dtype(
+                reference
+            )
+        ):
 
             equal = np.allclose(
-                reference.to_numpy(
+                generated.to_numpy(
                     dtype=float
                 ),
-                generated.to_numpy(
+                reference.to_numpy(
                     dtype=float
                 ),
                 equal_nan=True,
@@ -87,12 +246,20 @@ def main():
                 atol=1e-8,
             )
 
+        # ----------------------------------------------------------
+        # Non-numeric / categorical features
+        # ----------------------------------------------------------
+
         else:
 
             equal = (
-                reference.reset_index(drop=True)
+                generated
+                .astype("string")
+                .reset_index(drop=True)
                 .equals(
-                    generated.reset_index(drop=True)
+                    reference
+                    .astype("string")
+                    .reset_index(drop=True)
                 )
             )
 
@@ -100,28 +267,30 @@ def main():
             mismatches.append(column)
 
     # --------------------------------------------------------------
-    # 3. Final result
+    # 9. Final result
     # --------------------------------------------------------------
 
     if mismatches:
 
-        print("\nFeature mismatches detected:")
+        print(
+            "\nFeature mismatches detected:"
+        )
 
         for column in mismatches:
             print(f"  - {column}")
 
         raise AssertionError(
-            "Feature parity test failed."
+            "\nFeature parity test failed."
         )
 
-    print("\nAll model features match.")
-
     print(
-        f"Checked {len(feature_columns)} "
-        "model features."
+        f"\nAll {len(feature_columns)} "
+        "model features match."
     )
 
-    print("\nFeature parity test passed.")
+    print(
+        "\nFeature parity test passed."
+    )
 
 
 if __name__ == "__main__":
