@@ -534,15 +534,22 @@ necessary for this project's current objective (a practical, understandable MVP)
 - Chronological train/validation/test split, with programmatically enforced non-overlap.
 - Parquet outputs (`train.parquet`, `validation.parquet`, `test.parquet`, `metadata.json`)
   under `data/processed/features/`.
+  
 
-**NEXT:**
-- Model-training notebook.
-- Preprocessing pipeline (`ColumnTransformer` with `OneHotEncoder` for categoricals, fit on
-  training data only).
-- XGBoost baseline model.
-- Validation metrics and evaluation on the held-out validation split.
-- Model comparison / tuning, if pursued.
-- Final evaluation on the held-out test split.
-- Model artifact persistence.
-- Refactoring the validated feature-engineering and preprocessing logic into
-  `src/features/`, `src/preprocessing/`, `src/models/`, and `src/evaluation/`.
+### Feature Engineering Module — Engineering Learning
+
+The feature-engineering logic was extracted from the validated notebook into a reusable Python module, `src/features/build_features.py`.
+
+The module separates feature creation from preprocessing and model training, making the same transformations reusable during future inference.
+
+A feature-parity test was introduced to verify that the modular implementation reproduces the validated feature dataset. The first parity test identified a mismatch only in `relative_price`.
+
+The issue was not an incorrect formula. `relative_price` is calculated using the average price of the same item across stores for a given date. Therefore, calculating this feature on a truncated subset can produce a different denominator from the original full analytical dataset.
+
+This highlighted an important data-engineering principle:
+
+> Features that depend on cross-sectional information must be calculated at the appropriate data scope before the dataset is truncated or split.
+
+Therefore, feature engineering should follow the same data lineage as the validated notebook: generate the required features from the complete analytical dataset first, and only then perform the chronological train/validation/test split.
+
+This parity check also demonstrated why modularization should be validated against the original experiment rather than assuming that identical-looking code automatically produces identical data.
